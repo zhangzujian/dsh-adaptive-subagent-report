@@ -50,7 +50,12 @@ integration('DSH 0.1.0-rc.6 Cordis integration', () => {
       }
 
       reportFrom(child, content) {
-        const message = { id: 'report-message', child, content }
+        const message = {
+          id: 'report-message',
+          child,
+          content,
+          source: { kind: 'subagent-report', senderSessionId: child.id },
+        }
         parent.followup(message)
         return Promise.resolve(message.id)
       }
@@ -71,7 +76,7 @@ integration('DSH 0.1.0-rc.6 Cordis integration', () => {
     await ctx.plugin(Agents)
     const pluginFiber = await ctx.plugin(plugin)
 
-    const child = { session: { header: { parentSession: 'parent-session' } } }
+    const child = { id: 'child-session', session: { header: { parentSession: 'parent-session' } } }
     await ctx.subagents.reportFrom(child, [{ type: 'text', text: 'finding' }], {
       delivery: 'wakeup',
       signal: new AbortController().signal,

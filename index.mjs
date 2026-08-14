@@ -37,8 +37,10 @@ function assertRunningParentCompatibility(parent) {
   }
 }
 
-function warn(ctx, error) {
-  ctx.logger?.warn?.(`adaptive subagent report tail wake failed: ${String(error)}`)
+function reportTailWakeFailure(ctx, error) {
+  const message = `adaptive subagent report tail wake failed: ${String(error)}`
+  if (typeof ctx.logger?.error === 'function') ctx.logger.error(message)
+  else process.emitWarning(message, { code: 'DSH_ADAPTIVE_REPORT_TAIL_WAKE_FAILED' })
 }
 
 function armTailWake(ctx, result, parentId, parent, agents, isActive) {
@@ -48,13 +50,21 @@ function armTailWake(ctx, result, parentId, parent, agents, isActive) {
       if (agents.get(parentId) !== parent || parent.status !== 'idle') return
       if (!parent.inbox.nextStep.some(message => message.id === messageId)) return
       parent.wakeDriver()
-    }).catch(error => warn(ctx, error))
+    }).catch(error => reportTailWakeFailure(ctx, error))
   }, () => {})
 }
 
-function withTemporaryFollowup(parent, operation) {
+function withExactReportFollowup(parent, senderSessionId, operation) {
+  const originalFollowup = parent.followup
+  let routed = false
   const restore = replaceMethod(parent, 'followup', function reportFollowupAsSteer(message) {
-    return parent.steer(message)
+    if (!routed
+      && message?.source?.kind === 'subagent-report'
+      && message.source.senderSessionId === senderSessionId) {
+      routed = true
+      return parent.steer(message)
+    }
+    return originalFollowup.call(this, message)
   })
   try {
     return operation()
@@ -89,18 +99,24 @@ export function apply(ctx) {
     }
 
     assertRunningParentCompatibility(parent)
-    const result = withTemporaryFollowup(parent, () => original.call(subagents, child, content, options))
+    const result = withExactReportFollowup(parent, child.id, () => original.call(subagents, child, content, options))
     armTailWake(ctx, result, parentId, parent, agents, () => active)
     return result
   }
 
   ctx.effect(() => {
-    const restore = replaceMethod(subagents, 'reportFrom', patched)
     const installation = { patched }
     Object.defineProperty(subagents, INSTALLATION, {
       configurable: true,
       value: installation,
     })
+    let restore
+    try {
+      restore = replaceMethod(subagents, 'reportFrom', patched)
+    } catch (error) {
+      delete subagents[INSTALLATION]
+      throw error
+    }
     return () => {
       active = false
       restore()

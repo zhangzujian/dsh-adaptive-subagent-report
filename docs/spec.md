@@ -10,7 +10,7 @@ The implementation is tested at three agreed seams:
 
 1. The Cordis plugin interface: `apply(ctx)` installs one wrapper and teardown restores the prior method without damaging later wrappers.
 2. The subagent report interface: `ctx.subagents.reportFrom(child, content, options)` preserves explicit quiet delivery, keeps idle wakeup delivery as followup, and routes running wakeup delivery to next-step context.
-3. The real DSH AgentLoop interface: reports received by a running parent do not enter next-turn, reports received by an idle parent wake it, pending context cannot remain stranded after the terminal driver window, and accepted report messages are inserted once.
+3. The real DSH AgentLoop interface: a live probe verifies that running-parent reports do not enter next-turn and are claimed as context in the same turn, idle-parent reports wake a later turn, and each marker is inserted once. The terminal driver window is covered by explicitly version-sensitive rc.6 seam tests because that production race cannot be scheduled deterministically through the public live interface.
 
 ## Required behavior
 

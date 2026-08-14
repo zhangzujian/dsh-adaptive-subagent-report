@@ -22,28 +22,41 @@ function contextWith({ subagents, agents, logger }) {
   }
 }
 
+function runningParent(overrides = {}) {
+  return {
+    status: 'running',
+    inbox: { nextStep: [] },
+    followup() {},
+    steer() {},
+    whenIdle() {
+      return Promise.resolve()
+    },
+    wakeDriver() {},
+    ...overrides,
+  }
+}
+
 test('a wakeup report to a running parent is delivered through steer in the same acceptance call', async () => {
   const deliveries = []
-  const parent = {
-    status: 'running',
+  const parent = runningParent({
     followup(message) {
       deliveries.push({ route: 'followup', message })
     },
     steer(message) {
       deliveries.push({ route: 'steer', message })
     },
-    inbox: { nextStep: [] },
-    whenIdle() {
-      return Promise.resolve()
-    },
-    wakeDriver() {},
-  }
+  })
   const originalFollowup = parent.followup
   const accepted = Promise.resolve('report-message')
   const subagents = {
     reportFrom(child, content, options) {
       assert.equal(options.delivery, 'wakeup')
-      const message = { id: 'report-message', child, content }
+      const message = {
+        id: 'report-message',
+        child,
+        content,
+        source: { kind: 'subagent-report', senderSessionId: child.id },
+      }
       parent.followup(message)
       return accepted
     },
@@ -52,36 +65,83 @@ test('a wakeup report to a running parent is delivered through steer in the same
   const ctx = contextWith({ subagents, agents })
   apply(ctx)
 
-  const child = { session: { header: { parentSession: 'parent-session' } } }
+  const child = { id: 'child-session', session: { header: { parentSession: 'parent-session' } } }
   const content = [{ type: 'text', text: 'finding' }]
   const signal = new AbortController().signal
   const result = subagents.reportFrom(child, content, { delivery: 'wakeup', signal })
 
   assert.equal(result, accepted)
-  assert.deepEqual(deliveries, [{ route: 'steer', message: { id: 'report-message', child, content } }])
+  assert.deepEqual(deliveries, [{
+    route: 'steer',
+    message: {
+      id: 'report-message',
+      child,
+      content,
+      source: { kind: 'subagent-report', senderSessionId: child.id },
+    },
+  }])
   assert.equal(parent.followup, originalFollowup)
   assert.equal(await result, 'report-message')
 })
 
-test('teardown makes a covered wrapper pass through without overwriting the later wrapper', async () => {
+test('only the exact report send is rerouted during synchronous re-entry', async () => {
   const deliveries = []
-  const parent = {
-    status: 'running',
+  const parent = runningParent({
     followup(message) {
       deliveries.push({ route: 'followup', message })
     },
     steer(message) {
       deliveries.push({ route: 'steer', message })
     },
-    inbox: { nextStep: [] },
-    whenIdle() {
-      return Promise.resolve()
-    },
-    wakeDriver() {},
+  })
+  const child = {
+    id: 'child-session',
+    session: { header: { parentSession: 'parent-session' } },
+  }
+  const report = {
+    id: 'report-message',
+    source: { kind: 'subagent-report', senderSessionId: child.id },
+  }
+  const ordinary = {
+    id: 'ordinary-message',
+    source: { kind: 'user' },
   }
   const subagents = {
+    reportFrom() {
+      parent.followup(report)
+      parent.followup(ordinary)
+      return Promise.resolve(report.id)
+    },
+  }
+  const ctx = contextWith({ subagents, agents: { get: () => parent } })
+  apply(ctx)
+
+  await subagents.reportFrom(child, [], { delivery: 'wakeup' })
+
+  assert.deepEqual(deliveries, [
+    { route: 'steer', message: report },
+    { route: 'followup', message: ordinary },
+  ])
+})
+
+test('teardown makes a covered wrapper pass through without overwriting the later wrapper', async () => {
+  const deliveries = []
+  const parent = runningParent({
+    followup(message) {
+      deliveries.push({ route: 'followup', message })
+    },
+    steer(message) {
+      deliveries.push({ route: 'steer', message })
+    },
+  })
+  const subagents = {
     reportFrom(child, content) {
-      const message = { id: 'report-message', child, content }
+      const message = {
+        id: 'report-message',
+        child,
+        content,
+        source: { kind: 'subagent-report', senderSessionId: child.id },
+      }
       parent.followup(message)
       return Promise.resolve(message.id)
     },
@@ -97,7 +157,7 @@ test('teardown makes a covered wrapper pass through without overwriting the late
   subagents.reportFrom = laterWrapper
   ctx.dispose()
 
-  const child = { session: { header: { parentSession: 'parent-session' } } }
+  const child = { id: 'child-session', session: { header: { parentSession: 'parent-session' } } }
   await subagents.reportFrom(child, [], {
     delivery: 'wakeup',
     signal: new AbortController().signal,
@@ -106,7 +166,12 @@ test('teardown makes a covered wrapper pass through without overwriting the late
   assert.equal(subagents.reportFrom, laterWrapper)
   assert.deepEqual(deliveries, [{
     route: 'followup',
-    message: { id: 'report-message', child, content: [] },
+    message: {
+      id: 'report-message',
+      child,
+      content: [],
+      source: { kind: 'subagent-report', senderSessionId: child.id },
+    },
   }])
 })
 
@@ -125,7 +190,7 @@ test('a second installation on the same subagent runtime fails loudly', () => {
   first.dispose()
 })
 
-test('a routed report still pending when the exact parent becomes idle wakes existing context once', async () => {
+test('[DSH rc.6 internal seam] pending routed context wakes once after the exact parent becomes idle', async () => {
   const idle = Promise.withResolvers()
   const nextStep = []
   let wakeCount = 0
@@ -148,7 +213,12 @@ test('a routed report still pending when the exact parent becomes idle wakes exi
   }
   const subagents = {
     reportFrom(child, content) {
-      const message = { id: 'report-message', child, content }
+      const message = {
+        id: 'report-message',
+        child,
+        content,
+        source: { kind: 'subagent-report', senderSessionId: child.id },
+      }
       parent.followup(message)
       return Promise.resolve(message.id)
     },
@@ -157,7 +227,7 @@ test('a routed report still pending when the exact parent becomes idle wakes exi
   const ctx = contextWith({ subagents, agents })
   apply(ctx)
 
-  const child = { session: { header: { parentSession: 'parent-session' } } }
+  const child = { id: 'child-session', session: { header: { parentSession: 'parent-session' } } }
   await subagents.reportFrom(child, [], {
     delivery: 'wakeup',
     signal: new AbortController().signal,
@@ -172,10 +242,13 @@ test('a routed report still pending when the exact parent becomes idle wakes exi
   assert.equal(nextStep[0].id, 'report-message')
 })
 
-test('tail wake failures are reported without changing accepted report delivery', async () => {
+test('[DSH rc.6 internal seam] tail wake failures are reported loudly without changing accepted report delivery', async () => {
   const idle = Promise.withResolvers()
-  const warnings = []
-  const message = { id: 'report-message' }
+  const errors = []
+  const message = {
+    id: 'report-message',
+    source: { kind: 'subagent-report', senderSessionId: 'child-session' },
+  }
   const parent = {
     status: 'running',
     inbox: { nextStep: [message] },
@@ -191,18 +264,19 @@ test('tail wake failures are reported without changing accepted report delivery'
   const accepted = Promise.resolve(message.id)
   const subagents = {
     reportFrom() {
+      parent.followup(message)
       return accepted
     },
   }
   const ctx = contextWith({
     subagents,
     agents: { get: () => parent },
-    logger: { warn: warning => warnings.push(warning) },
+    logger: { error: error => errors.push(error) },
   })
   apply(ctx)
 
   const result = subagents.reportFrom(
-    { session: { header: { parentSession: 'parent-session' } } },
+    { id: 'child-session', session: { header: { parentSession: 'parent-session' } } },
     [],
     { delivery: 'wakeup', signal: new AbortController().signal },
   )
@@ -211,7 +285,7 @@ test('tail wake failures are reported without changing accepted report delivery'
   await new Promise(resolve => setImmediate(resolve))
 
   assert.equal(result, accepted)
-  assert.deepEqual(warnings, [
+  assert.deepEqual(errors, [
     'adaptive subagent report tail wake failed: Error: wake failed',
   ])
 })
@@ -279,7 +353,7 @@ test('a synchronous upstream rejection restores the running parent method', () =
 
   assert.throws(
     () => subagents.reportFrom(
-      { session: { header: { parentSession: 'parent-session' } } },
+      { id: 'child-session', session: { header: { parentSession: 'parent-session' } } },
       [],
       { delivery: 'wakeup' },
     ),

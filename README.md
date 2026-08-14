@@ -55,9 +55,12 @@ npm test
 npm install --no-save --package-lock=false @deepseek-ai/dsh@0.1.0-rc.6
 DSH_INSTALL_DIR=$PWD npm run test:integration
 npm pack --dry-run
+
+# Against a running DSH web profile with this plugin installed:
+npm run test:live
 ```
 
-Tests cover the agreed public seams documented in [`docs/spec.md`](docs/spec.md): Cordis install/teardown, `reportFrom` routing, and rc.6 integration behavior.
+Tests cover the agreed seams documented in [`docs/spec.md`](docs/spec.md): Cordis install/teardown, exact `reportFrom` routing, version-sensitive rc.6 tail liveness, and a live AgentLoop probe. The live probe creates two sessions: a running-parent report must appear as context and be claimed in turn 1, while an idle-parent report must wake turn 2. It requires a configured model and is intentionally not part of credential-free GitHub Actions.
 
 ## Removal
 
