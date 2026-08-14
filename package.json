@@ -1,0 +1,63 @@
+{
+  "name": "@zhangzujian/dsh-adaptive-subagent-report",
+  "version": "0.1.0",
+  "description": "Adaptive delivery for DeepSeek Harness continuable subagent reports",
+  "type": "module",
+  "main": "index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.mjs",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "test:integration": "node --test test/integration.test.mjs",
+    "test:live-fixture": "node --test test/live-fixture.test.mjs"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "cordis",
+    "subagent"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhangzujian/dsh-adaptive-subagent-report.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zhangzujian/dsh-adaptive-subagent-report/issues"
+  },
+  "homepage": "https://github.com/zhangzujian/dsh-adaptive-subagent-report#readme",
+  "engines": {
+    "node": ">=24"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "4.0.1",
+    "@deepseek-ai/dsh-agent": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-subagent": "0.1.0-rc.6"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-agent": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-subagent": {
+      "optional": true
+    }
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
