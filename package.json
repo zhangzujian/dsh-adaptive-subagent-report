@@ -17,8 +17,7 @@
   ],
   "scripts": {
     "test": "node --test",
-    "test:integration": "node --test test/integration.test.mjs",
-    "test:live-fixture": "node --test test/live-fixture.test.mjs"
+    "test:integration": "node --test test/integration.test.mjs"
   },
   "keywords": [
     "deepseek-harness",

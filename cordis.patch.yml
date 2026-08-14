@@ -1,0 +1,3 @@
+- insert:
+    - id: adaptive-subagent-report
+      name: ./index.mjs
