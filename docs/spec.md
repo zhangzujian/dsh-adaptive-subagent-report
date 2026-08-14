@@ -10,7 +10,7 @@ The implementation is tested at three agreed seams:
 
 1. The Cordis plugin interface: `apply(ctx)` installs one wrapper and teardown restores the prior method without damaging later wrappers.
 2. The subagent report interface: `ctx.subagents.reportFrom(child, content, options)` preserves explicit quiet delivery, keeps idle wakeup delivery as followup, and routes running wakeup delivery to next-step context.
-3. The real DSH AgentLoop interface: a live probe verifies that running-parent reports do not enter next-turn and are claimed as context in the same turn, idle-parent reports wake a later turn, and each marker is inserted once. The terminal driver window is covered by explicitly version-sensitive rc.6 seam tests because that production race cannot be scheduled deterministically through the public live interface.
+3. The real DSH AgentLoop interface: live probes verify running-parent context delivery, idle-parent wakeup, and that explicit user cancellation retains both report and settlement context without opening a later turn. The terminal driver window is additionally covered by explicitly version-sensitive rc.6 seam tests because that production race cannot be scheduled deterministically through the public live interface.
 
 ## Required behavior
 
@@ -21,11 +21,13 @@ The implementation is tested at three agreed seams:
 - `delivery: wakeup` with a running parent keeps the original report service path and waking accounting, but the one report send is routed to `parent.steer(message)` instead of `parent.followup(message)`.
 - Missing parents, unauthorized children, cancellation, activation closing, framing, message identity, and error translation remain owned by the original DSH report service.
 
-### Terminal liveness
+### Terminal liveness and user cancellation
 
-DSH 0.1.0-rc.6 has a narrow interval where an Agent still reports `running` after its final turn decision but before the driver publishes `idle`. If a routed report remains in `nextStep` after the parent becomes idle, the plugin must wake that exact live parent without inserting a second report message.
+DSH 0.1.0-rc.6 has a narrow interval where an Agent still reports `running` after its final turn decision but before the driver publishes `idle`. If a routed report remains in `nextStep` after the parent becomes naturally idle, the plugin must wake that exact live parent without inserting a second report message.
 
-The compatibility implementation may use a version-guarded rc.6 AgentLoop wake seam. It must fail loudly when the expected seam is unavailable rather than silently claiming complete protection.
+An explicit user cancellation takes precedence over report wakeup. A report accepted before `{ kind: user }` cancellation remains pending without tail wake, and a report arriving after that cancellation is injected as retained context without starting another turn. A settlement notice from the same continuable child is likewise retained without wakeup while the parent remains stopped. A later explicit user prompt may claim the retained report and settlement context normally.
+
+The compatibility implementation may use version-guarded rc.6 AgentLoop abort and wake seams. It must fail loudly when an expected seam is unavailable rather than silently claiming complete protection.
 
 ### Ordering and identity
 
@@ -53,5 +55,5 @@ The compatibility implementation may use a version-guarded rc.6 AgentLoop wake s
 - Report content coalescing, summarization, deduplication, or rate limiting.
 - Durable offline mailboxes.
 - Exactly-once behavior across model retries.
-- Changes to one-shot subagents or settlement notices.
+- Changes to one-shot subagents or settlement notices unrelated to a tracked user-stopped parent.
 - Automatic conversion of ordinary user queue messages.

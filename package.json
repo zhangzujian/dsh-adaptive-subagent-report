@@ -1,6 +1,6 @@
 {
   "name": "@zhangzujian/dsh-adaptive-subagent-report",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Adaptive delivery for DeepSeek Harness continuable subagent reports",
   "type": "module",
   "main": "index.mjs",
@@ -18,7 +18,8 @@
   "scripts": {
     "test": "node --test",
     "test:integration": "node --test test/integration.test.mjs",
-    "test:live": "node scripts/live-probe.mjs"
+    "test:live": "node scripts/live-probe.mjs",
+    "test:live-cancel": "node scripts/live-cancel-probe.mjs"
   },
   "keywords": [
     "deepseek-harness",

@@ -6,7 +6,8 @@ Continuable Background subagents report through `parent.followup()` by default. 
 
 - idle parent: keep the original `followup()` wakeup;
 - running parent: preserve the original report service and waking accounting, but route that report send through `steer()` so it enters `next-step` context;
-- terminal driver gap: if the accepted report is still pending after the exact parent becomes idle, wake the existing context without inserting a second report.
+- terminal driver gap: if the accepted report is still pending after the exact parent becomes naturally idle, wake the existing context without inserting a second report;
+- explicit user stop: keep accepted or later-arriving report and settlement context pending without restarting the session.
 
 ## Compatibility
 
@@ -17,7 +18,7 @@ The implementation deliberately targets exactly:
 - `@deepseek-ai/cordis@4.0.1`
 - Node.js 24 or newer
 
-The terminal-gap safeguard uses the rc.6 AgentLoop wake seam after structural validation. An incompatible running Agent fails loudly instead of silently losing the safeguard.
+The terminal-gap and user-stop safeguards use rc.6 AgentLoop phase/cancel/wake seams plus the private continuation-manager settlement seam after structural validation. This is a deliberately version-locked compatibility adapter.
 
 ## Installation
 
@@ -32,7 +33,7 @@ Or add a local checkout to `cordis.patch.yml`:
 ```yaml
 - insert:
     - id: adaptive-subagent-report
-      name: file:///absolute/path/to/dsh-adaptive-subagent-report/index.mjs?v=0.1.0
+      name: file:///absolute/path/to/dsh-adaptive-subagent-report/index.mjs?v=0.1.1
 ```
 
 The plugin injects `subagents` and `agents` and must run in the Host plane. Do not install it inside an agent preset isolate.
@@ -44,6 +45,7 @@ The plugin injects `subagents` and `agents` and must run in the Host plane. Do n
 | `quiet` | any | Unchanged upstream quiet delivery |
 | `wakeup` | idle | Unchanged upstream followup turn |
 | `wakeup` | running | One next-step context message, preserving upstream report identity and accounting |
+| `wakeup` | user-cancelled | Retained context through `inject`, with no automatic restart |
 | `wakeup` | missing parent | Upstream authorization and parent error behavior |
 
 The plugin does not copy report content, create report messages, modify DSH package files, or patch prototypes.
@@ -58,9 +60,10 @@ npm pack --dry-run
 
 # Against a running DSH web profile with this plugin installed:
 npm run test:live
+npm run test:live-cancel
 ```
 
-Tests cover the agreed seams documented in [`docs/spec.md`](docs/spec.md): Cordis install/teardown, exact `reportFrom` routing, version-sensitive rc.6 tail liveness, and a live AgentLoop probe. The live probe creates two sessions: a running-parent report must appear as context and be claimed in turn 1, while an idle-parent report must wake turn 2. It requires a configured model and is intentionally not part of credential-free GitHub Actions.
+Tests cover the agreed seams documented in [`docs/spec.md`](docs/spec.md): Cordis install/teardown, exact `reportFrom` routing, version-sensitive rc.6 tail liveness, and live AgentLoop probes. The delivery probe verifies running-parent context and idle-parent wakeup. The cancellation probe stops a parent while report context is pending and rejects any automatic restart. Both require a configured model and are intentionally not part of credential-free GitHub Actions.
 
 ## Removal
 
