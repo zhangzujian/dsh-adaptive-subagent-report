@@ -1,6 +1,6 @@
 {
   "name": "@zhangzujian/dsh-adaptive-subagent-report",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Adaptive delivery for DeepSeek Harness continuable subagent reports",
   "type": "module",
   "main": "index.mjs",
@@ -43,6 +43,7 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
     "@deepseek-ai/dsh-agent": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-agent-loop": "0.1.0-rc.6",
     "@deepseek-ai/dsh-subagent": "0.1.0-rc.6"
   },
   "peerDependenciesMeta": {
@@ -50,6 +51,9 @@
       "optional": true
     },
     "@deepseek-ai/dsh-agent": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-agent-loop": {
       "optional": true
     },
     "@deepseek-ai/dsh-subagent": {

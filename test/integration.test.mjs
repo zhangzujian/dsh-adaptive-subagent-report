@@ -27,18 +27,19 @@ integration('DSH 0.1.0-rc.6 Cordis integration', () => {
     ;({ Context, Service } = await packageImport('cordis'))
   })
 
-  it('installs through real Cordis service views and restores the prototype method', async () => {
+  it('[version-sensitive: DSH rc.6 continuation settlement seam] installs through real Cordis views and restores methods', async () => {
     const deliveries = []
     const abort = new AbortController()
     const parent = {
       status: 'running',
       phase: { kind: 'running', turn: 1, abort },
-      inbox: { nextStep: [] },
+      inbox: { nextStep: [], nextTurn: [] },
       followup(message) {
         deliveries.push({ route: 'followup', message })
       },
       steer(message) {
         deliveries.push({ route: 'steer', message })
+        this.inbox.nextStep.push(message)
       },
       inject(message) {
         deliveries.push({ route: 'inject', message })

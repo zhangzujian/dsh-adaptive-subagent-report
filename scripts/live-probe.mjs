@@ -1,15 +1,11 @@
 #!/usr/bin/env node
 
-import { createProbeTransport } from './live-probe-transport.mjs'
+import { createProbeTransport, textContent } from './live-probe-transport.mjs'
 
-const { openEventSocket, rpc, timeoutMs } = createProbeTransport({
+const { rpc, timeoutMs, watchSession } = createProbeTransport({
   defaultTimeoutMs: 300000,
   rpcPrefix: 'probe',
 })
-
-function textContent(blocks) {
-  return blocks?.filter(block => block.type === 'text').map(block => block.text).join('\n') ?? ''
-}
 
 async function runScenario({ name, marker, expectedTurns, prompt }) {
   const { sessionId } = await rpc('session.create', {
@@ -25,36 +21,35 @@ async function runScenario({ name, marker, expectedTurns, prompt }) {
   let maxContextReports = 0
   const done = Promise.withResolvers()
 
-  const mux = openEventSocket('events.mux', payload => {
-    if (payload?.type !== 'session/queue' || payload.sessionId !== sessionId) return
-    queuedReports = payload.items.filter(item => (
-      item.placement === 'queued'
-      && item.message?.source?.kind === 'subagent-report'
-    )).length
-    maxQueuedReports = Math.max(maxQueuedReports, queuedReports)
-    maxContextReports = Math.max(maxContextReports, payload.items.filter(item => (
-      item.placement === 'context'
-      && item.message?.source?.kind === 'subagent-report'
-    )).length)
-    console.log(JSON.stringify({
-      phase: 'queue',
-      name,
-      queuedReports,
-      maxQueuedReports,
-      maxContextReports,
-      total: payload.items.length,
-    }))
-  })
-
-  const host = openEventSocket('events.host', payload => {
-    if (payload?.type !== 'host/session-status' || payload.sessionId !== sessionId) return
-    console.log(JSON.stringify({ phase: 'status', name, running: payload.running }))
-    if (payload.running) running = true
-    else if (running) {
-      running = false
-      completedTurns += 1
-      if (completedTurns >= expectedTurns) done.resolve()
-    }
+  const events = watchSession(sessionId, {
+    onQueue: (payload) => {
+      queuedReports = payload.items.filter(item => (
+        item.placement === 'queued'
+        && item.message?.source?.kind === 'subagent-report'
+      )).length
+      maxQueuedReports = Math.max(maxQueuedReports, queuedReports)
+      maxContextReports = Math.max(maxContextReports, payload.items.filter(item => (
+        item.placement === 'context'
+        && item.message?.source?.kind === 'subagent-report'
+      )).length)
+      console.log(JSON.stringify({
+        phase: 'queue',
+        name,
+        queuedReports,
+        maxQueuedReports,
+        maxContextReports,
+        total: payload.items.length,
+      }))
+    },
+    onStatus: (payload) => {
+      console.log(JSON.stringify({ phase: 'status', name, running: payload.running }))
+      if (payload.running) running = true
+      else if (running) {
+        running = false
+        completedTurns += 1
+        if (completedTurns >= expectedTurns) done.resolve()
+      }
+    },
   })
 
   const timer = setTimeout(
@@ -70,8 +65,7 @@ async function runScenario({ name, marker, expectedTurns, prompt }) {
 
   await done.promise
   clearTimeout(timer)
-  mux.close()
-  host.close()
+  events.close()
 
   const history = await rpc('session.history', { sessionId, maxMessages: 50 })
   let currentTurn
