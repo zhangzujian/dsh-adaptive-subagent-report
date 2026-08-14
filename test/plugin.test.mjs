@@ -290,6 +290,55 @@ test('[DSH rc.6 internal seam] tail wake failures are reported loudly without ch
   ])
 })
 
+test('[DSH rc.6 internal seam] maintenance cancellation retains reports until a later turn', async () => {
+  const abort = new AbortController()
+  const routes = []
+  const parent = {
+    status: 'idle',
+    phase: { kind: 'maintenance', lastTurn: 1, abort },
+    followup(message) {
+      routes.push({ route: 'followup', message })
+    },
+    steer(message) {
+      routes.push({ route: 'steer', message })
+    },
+    inject(message) {
+      routes.push({ route: 'inject', message })
+    },
+    cancel(cause) {
+      abort.abort(cause)
+    },
+  }
+  const child = { id: 'child-session', session: { header: { parentSession: 'parent-session' } } }
+  let reports = 0
+  const subagents = {
+    reportFrom() {
+      reports += 1
+      const message = {
+        id: `report-${reports}`,
+        source: { kind: 'subagent-report', senderSessionId: child.id },
+      }
+      parent.followup(message)
+      return Promise.resolve(message.id)
+    },
+  }
+  const ctx = contextWith({
+    subagents,
+    agents: { get: () => parent, list: () => [parent] },
+  })
+  apply(ctx)
+
+  parent.cancel({ kind: 'user' }, { keepInbox: true })
+  await subagents.reportFrom(child, [], { delivery: 'wakeup' })
+  parent.phase = { kind: 'idle', lastTurn: 2 }
+  await subagents.reportFrom(child, [], { delivery: 'wakeup' })
+
+  assert.deepEqual(routes.map(({ route, message }) => [route, message.id]), [
+    ['inject', 'report-1'],
+    ['followup', 'report-2'],
+  ])
+})
+
 test('idle wakeup, explicit quiet, and missing-parent reports remain upstream-owned', async () => {
   const calls = []
   const parent = {
