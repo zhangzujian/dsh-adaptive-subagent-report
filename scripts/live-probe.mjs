@@ -23,13 +23,17 @@ async function rpc(method, payload) {
   return envelope.result.value
 }
 
-function open(path, onPayload) {
-  const socket = new WebSocket(`${baseWs}/api/${path}`)
+function openEventSocket(eventPath, onPayload) {
+  const socket = new WebSocket(`${baseWs}/api/${eventPath}`)
   socket.addEventListener('message', event => {
     const envelope = JSON.parse(String(event.data))
     onPayload(envelope.payload)
   })
   return socket
+}
+
+function textContent(blocks) {
+  return blocks?.filter(block => block.type === 'text').map(block => block.text).join('\n') ?? ''
 }
 
 async function runScenario({ name, marker, expectedTurns, prompt }) {
@@ -46,7 +50,7 @@ async function runScenario({ name, marker, expectedTurns, prompt }) {
   let maxContextReports = 0
   const done = Promise.withResolvers()
 
-  const mux = open('events.mux', payload => {
+  const mux = openEventSocket('events.mux', payload => {
     if (payload?.type !== 'session/queue' || payload.sessionId !== sessionId) return
     queuedReports = payload.items.filter(item => (
       item.placement === 'queued'
@@ -67,7 +71,7 @@ async function runScenario({ name, marker, expectedTurns, prompt }) {
     }))
   })
 
-  const host = open('events.host', payload => {
+  const host = openEventSocket('events.host', payload => {
     if (payload?.type !== 'host/session-status' || payload.sessionId !== sessionId) return
     console.log(JSON.stringify({ phase: 'status', name, running: payload.running }))
     if (payload.running) running = true
@@ -102,13 +106,13 @@ async function runScenario({ name, marker, expectedTurns, prompt }) {
     const event = row.event
     if (event.type === 'turn/start') currentTurn = event.data.turn
     if (event.type === 'user/message') {
-      const text = event.data.content?.filter(block => block.type === 'text').map(block => block.text).join('\n') ?? ''
+      const text = textContent(event.data.content)
       if (event.data.source?.kind === 'subagent-report' && text.includes(marker)) {
         reportTurns.push(currentTurn)
       }
     }
     if (event.type === 'assistant/message') {
-      const text = event.data.message?.content?.filter(block => block.type === 'text').map(block => block.text).join('\n') ?? ''
+      const text = textContent(event.data.message?.content)
       if (text.includes('PROBE_RECEIVED') && text.includes(marker)) acknowledged = true
     }
   }
